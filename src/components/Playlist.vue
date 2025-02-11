@@ -4,6 +4,9 @@
       <div class="container-fluid w-100">
         <div class="collapse navbar-collapse d-flex justify-content-center w-100">
           <ul class="navbar-nav mb-2 mb-lg-0 d-flex align-items-center">
+            <button class="btn btn-outline-secondary me-3" type="button" @click="buscarHistorico">
+              Histórico
+            </button>
             <button class="btn btn-outline-secondary me-3" type="button" @click="listarGeneros">
               Gêneros musicais
             </button>
@@ -18,90 +21,136 @@
         </div>
       </div>
     </nav>
-    <div class="container d-flex justify-content-center mt-5">
+
+    <div v-if="exibirHistorico" class="container mt-4">
+      <h3>Histórico de Buscas</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Tipo de Busca</th>
+            <th>Data</th>
+            <th>Artista/Música</th>
+            <th>Resultado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in historico" :key="item.id">
+            <td>{{ item.tipo }}</td>
+            <td>{{ new Date(item.dataConsulta).toLocaleString() }}</td>
+            <td>{{ item.termoPesquisa }}</td>
+            <td>{{ item.resultadoJson }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="container d-flex justify-content-center mt-5" v-if="!exibirHistorico && !exibirGeneros">
       <table class="table table-striped table-bordered w-75">
         <thead>
           <tr>
             <th v-if="!exibirGeneros">Nome do Artista</th>
             <th v-if="!exibirGeneros">Música</th>
             <th>Gênero</th>
-            <th v-if="!exibirGeneros">Ano</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(artista, index) in artistasExibidos" :key="index">
-            <td v-if="!exibirGeneros">{{ artista.artist || '' }}</td>
-            <td v-if="!exibirGeneros">{{ artista.song || '' }}</td>
-            <td>{{ artista.genre || artista }}</td>
-            <td v-if="!exibirGeneros">{{ artista.year || '' }}</td>
+            <td v-if="!exibirGeneros">{{ artista.artist || 'Desconhecido' }}</td>
+            <td v-if="!exibirGeneros">{{ artista.song || 'Desconhecida' }}</td>
+            <td>{{ artista.genre || 'Desconhecido' }}</td>
           </tr>
         </tbody>
       </table>
+    </div>
+    <div v-if="exibirGeneros" class="container mt-4">
+      <h3>Gêneros Musicais</h3>
+      <ul class="list-group">
+        <li v-for="(genero, index) in generos" :key="index" class="list-group-item">
+          {{ genero }}
+        </li>
+      </ul>
     </div>
   </div>
 </template>
 
 <script>
+import api from "@/services/api";
+
 export default {
   name: "PlaylistComponent",
   data() {
     return {
-      artistas: [],
-      artistasOrdenados: [],
-      artistasFiltrados: [],
-      generos: [],
-      exibirGeneros: false,
-      termoBusca: "",
-      estaOrdenado: false,
+      historico: [],           
+      artistas: [],            
+      artistasOrdenados: [],   
+      artistasFiltrados: [],   
+      generos: [],             
+      exibirGeneros: false,    
+      estaOrdenado: false,     
+      exibirHistorico: false,
+      termoBusca: ""  
     };
   },
   computed: {
+   
     artistasExibidos() {
-      if (this.exibirGeneros) {
-        return this.generos;
-      }
-      return this.artistasFiltrados.length
-        ? this.artistasFiltrados
-        : this.estaOrdenado
-        ? this.artistasOrdenados
-        : this.artistas;
+      if (this.exibirGeneros) return this.generos; 
+      if (this.artistasFiltrados.length) return this.artistasFiltrados; 
+      return this.estaOrdenado ? this.artistasOrdenados : this.artistas;
     },
   },
   methods: {
+    
     async buscarPlaylists() {
       try {
-        const response = await fetch("https://guilhermeonrails.github.io/api-csharp-songs/songs.json");
-        const data = await response.json();
-        this.artistas = [...data];
-        this.artistasOrdenados = [...data].sort((a, b) => a.artist.localeCompare(b.artist));
-        this.gerarGeneros();
+        const response = await api.get("playlists");
+        this.artistas = response.data;
+        this.artistasOrdenados = [...this.artistas].sort((a, b) => a.artist.localeCompare(b.artist));
+
       } catch (error) {
         console.error("Erro ao carregar artistas:", error);
       }
     },
+
+   
     alternarOrdenacao() {
       this.estaOrdenado = !this.estaOrdenado;
       this.artistasFiltrados = [];
       this.exibirGeneros = false;
+      this.exibirHistorico = false;
     },
-    listarGeneros() {
-      if (this.artistas.length === 0) return;
-      this.exibirGeneros = !this.exibirGeneros;
+
+    async listarGeneros() {
+      try {
+        const response = await api.get("playlists/generos");
+        this.generos = response.data;
+        this.exibirGeneros = !this.exibirGeneros;
+      } catch (error) {
+        console.error("Erro ao carregar gêneros:", error);
+      }
     },
-    gerarGeneros() {
-      const generos = this.artistas.map(artista => artista.genre).join(", ").split(", ");
-      this.generos = [...new Set(generos)];
+
+    async buscarHistorico() {
+      try {
+        const response = await api.get("playlists/historico");
+        this.historico = response.data;
+        this.exibirHistorico = !this.exibirHistorico; 
+      } catch (error) {
+        console.error("Erro ao carregar histórico:", error);
+      }
     },
-    buscar() {
-      const termo = this.termoBusca.toLowerCase().trim();
-      if (!termo) {
+
+    async buscar() {
+      if (!this.termoBusca.trim()) {
         this.artistasFiltrados = [];
         return;
       }
-      this.artistasFiltrados = this.artistas.filter(a => 
-        a.artist.toLowerCase().includes(termo) || a.song.toLowerCase().includes(termo)
-      );
-    }
+      try {
+        const response = await api.get(`playlists/buscar/${this.termoBusca}`);
+        this.artistasFiltrados = response.data;
+      } catch (error) {
+        console.error("Erro ao buscar artista ou música:", error);
+      }
+    },
   },
   mounted() {
     this.buscarPlaylists();
